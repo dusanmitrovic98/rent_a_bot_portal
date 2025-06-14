@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Web Terminal</title>
+    <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css">
+    <script src="https://unpkg.com/xterm@4.19.0/lib/xterm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        :root {
+            --primary-bg: #1a1a1a;
+            --terminal-bg: #000;
+            --header-bg: #252525;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--primary-bg);
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: var(--header-bg);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+
+        .controls button {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .controls button:hover {
+            background: #45a049;
+        }
+
+        .terminals-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            height: calc(100vh - 60px);
+        }
+
+        .terminal-wrapper {
+            background: var(--terminal-bg);
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header {
+            padding: 8px 12px;
+            background: #333;
+            color: #aaa;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .close-btn {
+            background: transparent;
+            color: #aaa;
+            border: none;
+            cursor: pointer;
+        }
+
+        .terminal {
+            padding: 10px;
+            flex-grow: 1;
+        }
+
+        @media (max-width: 600px) {
+            .terminals-container {
+                grid-template-columns: 1fr;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Web Terminal</h1>
+        <div class="controls">
+            <button id="new-terminal">+ New Terminal</button>
+        </div>
+    </div>
+
+    <div class="terminals-container" id="terminals"></div>
+
+    <script>
+        const socket = io();
+        let terminals = {};
+        let sessionMap = {};
+        let commandBuffers = {};  // Buffer to store current command
+
+        function createTerminal() {
+            const tempId = `term-${Date.now()}`;
+            const sessionNumber = Object.keys(terminals).length + 1;
+
+            const container = document.createElement('div');
+            container.className = 'terminal-wrapper';
+            container.innerHTML = `
+            <div class="terminal-header">
+                <span>Session ${sessionNumber}</span>
+                <button class="close-btn" data-id="${tempId}">×</button>
+            </div>
+            <div class="terminal" id="${tempId}"></div>
+        `;
+            document.getElementById('terminals').appendChild(container);
+
+            const term = new Terminal({
+                cursorBlink: true,
+                theme: { background: '#000', foreground: '#f0f0f0' },
+                convertEol: true,  // Convert CR to LF
+                disableStdin: false
+            });
+
+            term.open(document.getElementById(tempId));
+            term.write('\x1b[33mCreating session...\x1b[0m\r\n');
+
+            // Initialize command buffer for this terminal
+            commandBuffers[tempId] = '';
+
+            // Store terminal with temporary ID
+            terminals[tempId] = term;
+
+            // Set up close button handler
+            container.querySelector('.close-btn').addEventListener('click', () => {
+                const sessionId = sessionMap[tempId];
+                if (sessionId) {
+                    socket.emit('close_session', { session_id: sessionId });
+                }
+                term.dispose();
+                delete terminals[tempId];
+                delete sessionMap[tempId];
+                delete commandBuffers[tempId];
+                container.remove();
+            });
+
+            // Create new session
+            socket.emit('create_session');
+        }
+
+        // Socket event handlers
+        socket.on('session_created', data => {
+            // Find the most recent terminal without a session
+            const tempId = Object.keys(terminals).reverse().find(id => !sessionMap[id]);
+
+            if (tempId && terminals[tempId]) {
+                const sessionId = data.session_id;
+                sessionMap[tempId] = sessionId;
+
+                const term = terminals[tempId];
+                term.write('\x1b[32mSession ready\x1b[0m\r\n');
+                term.write('> ');
+
+                // Set up command handler
+                term.onData(data => {
+                    const termId = tempId;
+                    const buffer = commandBuffers[termId];
+
+                    // Handle backspace
+                    if (data === '\x7F' || data === '\b') {
+                        if (buffer.length > 0) {
+                            commandBuffers[termId] = buffer.slice(0, -1);
+                            term.write('\b \b');
+                        }
+                        return;
+                    }
+
+                    // Handle Enter key
+                    if (data === '\r' || data === '\n') {
+                        // Send command to backend
+                        socket.emit('execute', {
+                            command: commandBuffers[termId] + '\r\n',
+                            session_id: sessionId
+                        });
+                        term.write('\r\n');
+                        commandBuffers[termId] = '';
+                        return;
+                    }
+
+                    // Handle printable characters
+                    if (data >= String.fromCharCode(0x20) && data <= String.fromCharCode(0x7E)) {
+                        commandBuffers[termId] += data;
+                        term.write(data);
+                    }
+                });
+            }
+        });
+
+        socket.on('output', data => {
+            // Find terminal by session ID
+            const tempId = Object.keys(sessionMap).find(id => sessionMap[id] === data.session_id);
+            if (tempId && terminals[tempId]) {
+                const term = terminals[tempId];
+
+                // Write output directly
+                term.write(data.data);
+            }
+        });
+
+        socket.on('session_error', data => {
+            // Find terminal without session
+            const tempId = Object.keys(terminals).find(id => !sessionMap[id]);
+            if (tempId && terminals[tempId]) {
+                terminals[tempId].write(`\x1b[31mERROR: ${data.message}\x1b[0m\r\n`);
+            }
+        });
+
+        // Initialize
+        document.getElementById('new-terminal').addEventListener('click', createTerminal);
+
+        // Create first terminal on load
+        window.addEventListener('load', createTerminal);
+    </script>
+
+    <!-- Add Unicode handling support -->
+    <script src="https://unpkg.com/xterm-addon-unicode11@0.5.0/lib/xterm-addon-unicode11.js"></script>
+</body>
+
+</html>

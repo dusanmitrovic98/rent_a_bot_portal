@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Create Git Tag with Release Message",
+			"type": "shell",
+			"command": "${workspaceFolder}\\.core\\create-tag.bat",
+			"group": "build"
+		}
+	]
+}
