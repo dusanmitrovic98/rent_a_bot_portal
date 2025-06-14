@@ -56,8 +56,8 @@ def create_shell_session(session_id):
         def output_reader():
             try:
                 # Skip initial output until we see the prompt
-                initial_output = []
                 prompt_detected = False
+                command_echo_mode = False
                 
                 while True:
                     output = process.stdout.readline()
@@ -70,7 +70,19 @@ def create_shell_session(session_id):
                                 continue
                             if any(char in output for char in ['>', '$', '#']):
                                 prompt_detected = True
-                        if prompt_detected:
+                                continue
+                        
+                        # Skip command echo
+                        if command_echo_mode:
+                            command_echo_mode = False
+                            continue
+                            
+                        # Skip prompt lines
+                        if any(char in output for char in ['>', '$', '#']):
+                            continue
+                            
+                        # Send cleaned output
+                        if output.strip():
                             socketio.emit('output', {'data': output, 'session_id': session_id})
             except Exception as e:
                 logger.error(f"Output reader error: {str(e)}")

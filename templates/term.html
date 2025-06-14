@@ -193,7 +193,7 @@
                     if (data === '\r' || data === '\n') {
                         // Send command to backend
                         socket.emit('execute', {
-                            command: commandBuffers[termId] + '\r\n',
+                            command: commandBuffers[termId] + '\n',
                             session_id: sessionId
                         });
                         term.write('\r\n');
@@ -216,16 +216,13 @@
             if (tempId && terminals[tempId]) {
                 const term = terminals[tempId];
 
-                // Write output directly
+                // Write output and show new prompt
                 term.write(data.data);
-            }
-        });
 
-        socket.on('session_error', data => {
-            // Find terminal without session
-            const tempId = Object.keys(terminals).find(id => !sessionMap[id]);
-            if (tempId && terminals[tempId]) {
-                terminals[tempId].write(`\x1b[31mERROR: ${data.message}\x1b[0m\r\n`);
+                // Only add new prompt if output doesn't end with one
+                if (!data.data.endsWith('\n> ')) {
+                    term.write('> ');
+                }
             }
         });
 
