@@ -40,7 +40,7 @@ for pkg in package_loaders:
         
     view_func = create_package_view(pkg)
     endpoint_name = f'{pkg}_home'  # Unique endpoint per package
-    app.add_url_rule(f'/{pkg}', endpoint=endpoint_name, view_func=view_func)
+    app.add_url_rule(f'/{pkg}', endpoint=endpoint_name, view_func=view_func, strict_slashes=False)
 
 def run_service(service_path):
     """Run a service module with proper error handling"""
