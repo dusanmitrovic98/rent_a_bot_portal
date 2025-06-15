@@ -1,12 +1,12 @@
-from flask import Flask
+from flask import Flask, render_template
 import json
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
 
 @app.route('/ask')
 def ask():
-    return 'ask worker is alive!'
+    return render_template('index.html')
 
 with open(os.path.join(os.path.dirname(__file__), 'config.json')) as f:
     config = json.load(f)
