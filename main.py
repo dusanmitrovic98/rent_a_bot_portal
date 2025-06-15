@@ -26,7 +26,7 @@ def catch_all(path):
         return proxy_request('ask', path)
     
     # Main website
-    return "Main Website on Port 8080"
+    return "Main Website on Port 3000"
 
 def proxy_request(service, path):
     service_url = f"{SERVICES[service]}/{path.replace(service + '/', '')}"
@@ -49,5 +49,5 @@ def proxy_request(service, path):
     return (resp.content, resp.status_code, headers)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 3000))
     app.run(host="0.0.0.0", port=port)
