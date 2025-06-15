@@ -1,53 +1,63 @@
-import multiprocessing
 import os
-import sys
-from flask import Flask, render_template
-from dotenv import load_dotenv
+import importlib
+from flask import Flask, render_template, abort
+import multiprocessing
 
-def run_flask():
-    # Load environment variables from .env file
-    load_dotenv()
-    app = Flask(__name__)
+app = Flask(__name__, template_folder=None)
 
-    @app.route('/')
-    def index():
-        return render_template('index.html')
+# Dynamically register blueprints for each service in packages
+PACKAGE_DIR = os.path.join(os.path.dirname(__file__), 'packages')
 
-    @app.route('/ask')
-    def ask_proxy():
-        import requests
-        try:
-            resp = requests.get('http://localhost:5002/')
-            return resp.text, resp.status_code, resp.headers.items()
-        except Exception as e:
-            return f"Ask service unavailable: {e}", 502
+for service in os.listdir(PACKAGE_DIR):
+    service_path = os.path.join(PACKAGE_DIR, service)
+    if os.path.isdir(service_path):
+        main_py = os.path.join(service_path, 'main.py')
+        service_template_dir = os.path.join(service_path, 'templates')
+        service_index_html = os.path.join(service_template_dir, 'index.html')
+        if os.path.exists(main_py) and os.path.exists(service_index_html):
+            # Import the service's main.py as a module
+            spec = importlib.util.spec_from_file_location(f"{service}_main", main_py)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            # Register a route for the service
+            def make_service_page(service=service, template_dir=service_template_dir):
+                def service_page():
+                    return render_template(os.path.join(template_dir, 'index.html'))
+                return service_page
+            app.add_url_rule(f'/{service}', f'{service}_page', make_service_page())
 
-    @app.route('/dashboard')
-    def dashboard_proxy():
-        import requests
-        try:
-            resp = requests.get('http://localhost:5001/')
-            return resp.text, resp.status_code, resp.headers.items()
-        except Exception as e:
-            return f"Dashboard service unavailable: {e}", 502
+@app.route('/')
+def home():
+    return render_template(os.path.join('..', 'templates', 'index.html'))
 
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-def run_ask():
-    os.system(f'{sys.executable} packages{os.sep}ask{os.sep}main.py')
-
-def run_dashboard():
-    os.system(f'{sys.executable} packages{os.sep}dashboard{os.sep}main.py')
+@app.route('/<service>')
+def service_auto_route(service):
+    service_template = os.path.join(PACKAGE_DIR, service, 'templates', 'index.html')
+    if os.path.exists(service_template):
+        # Flask expects template paths relative to a templates folder, so use absolute path
+        return render_template(service_template)
+    abort(404)
 
 if __name__ == '__main__':
-    p_ask = multiprocessing.Process(target=run_ask)
-    p_dashboard = multiprocessing.Process(target=run_dashboard)
-    p_ask.start()
-    p_dashboard.start()
-    # Give services time to start
-    import time
-    time.sleep(1)
-    run_flask()
-    p_ask.join()
-    p_dashboard.join()
+    processes = []
+    # Start each service in its own process
+    for service in os.listdir(PACKAGE_DIR):
+        service_path = os.path.join(PACKAGE_DIR, service)
+        main_py = os.path.join(service_path, 'main.py')
+        if os.path.isdir(service_path) and os.path.exists(main_py):
+            spec = importlib.util.spec_from_file_location(f"{service}_main", main_py)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, 'run'):
+                p = multiprocessing.Process(target=mod.run)
+                p.start()
+                processes.append(p)
+    # Optionally, also run the main portal app in a process
+    def run_portal():
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host='0.0.0.0', port=port)
+    p = multiprocessing.Process(target=run_portal)
+    p.start()
+    processes.append(p)
+    for p in processes:
+        p.join()

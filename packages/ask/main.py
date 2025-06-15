@@ -1,10 +1,16 @@
-from flask import Flask, render_template
+from flask import Flask
+import json
+import os
 
 app = Flask(__name__)
 
-@app.route('/')
-def ask_home():
-    return render_template('ask.html')
+@app.route('/ask')
+def ask():
+    return 'ask worker is alive!'
 
-if __name__ == '__main__':
-    app.run(host="localhost", port=5002)
+with open(os.path.join(os.path.dirname(__file__), 'config.json')) as f:
+    config = json.load(f)
+port = config.get('port', 5002)
+
+def run():
+    app.run(host='127.0.0.1', port=port)
