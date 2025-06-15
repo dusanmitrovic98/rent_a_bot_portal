@@ -1,4 +1,10 @@
-{% extends "index.html" %}
+<!-- packages/dashboard/templates/index.html -->
+{% if standalone %}
+    {% extends "base.html" %}
+{% else %}
+    {% extends "index.html" %}  <!-- Portal's base template -->
+{% endif %}
+
 {% block content %}
 <h1>Dashboard Service</h1>
 <p>This is the dashboard service page.</p>

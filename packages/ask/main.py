@@ -14,7 +14,8 @@ except (FileNotFoundError, json.JSONDecodeError):
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
 def run():
-    app = Flask(__name__, template_folder=TEMPLATE_DIR)
+    static_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'static')
+    app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=static_dir)
 
     @app.route('/')
     def home():

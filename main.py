@@ -2,45 +2,54 @@ import os
 import multiprocessing
 import signal
 import sys
-import traceback
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template
 from jinja2 import ChoiceLoader, FileSystemLoader, PrefixLoader
+import importlib.util
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(__file__)
+PACKAGE_DIR = os.path.join(BASE_DIR, 'packages')
+MAIN_TEMPLATES = os.path.join(BASE_DIR, 'templates')
 
-PACKAGE_DIR = os.path.join(os.path.dirname(__file__), 'packages')
-main_templates = os.path.join(os.path.dirname(__file__), 'templates')
+# Set up Flask app with explicit static_folder
+app = Flask(__name__, static_folder='static')
 
-# Configure template loaders with namespacing
-package_loaders = {}
-for pkg in os.listdir(PACKAGE_DIR):
-    pkg_dir = os.path.join(PACKAGE_DIR, pkg)
-    template_dir = os.path.join(pkg_dir, 'templates')
-    
-    if os.path.isdir(template_dir):
-        package_loaders[pkg] = FileSystemLoader(template_dir)
+def discover_packages(package_dir):
+    """Discover package template loaders and service packages."""
+    template_loaders = {}
+    service_pkgs = []
+    for pkg_name in os.listdir(package_dir):
+        pkg_path = os.path.join(package_dir, pkg_name)
+        if not os.path.isdir(pkg_path):
+            continue
+        templates_path = os.path.join(pkg_path, 'templates')
+        main_py_path = os.path.join(pkg_path, 'main.py')
+        if os.path.isdir(templates_path):
+            template_loaders[pkg_name] = FileSystemLoader(templates_path)
+        if os.path.isfile(main_py_path):
+            service_pkgs.append((pkg_name, pkg_path))
+    return template_loaders, service_pkgs
 
-# Create loader hierarchy
+package_template_loaders, service_packages = discover_packages(PACKAGE_DIR)
+
+# Set up Jinja loader hierarchy: main templates take precedence, then package templates
 app.jinja_loader = ChoiceLoader([
-    FileSystemLoader(main_templates),
-    PrefixLoader(package_loaders, delimiter=':')
+    FileSystemLoader(MAIN_TEMPLATES),
+    PrefixLoader(package_template_loaders, delimiter=':')
 ])
 
 @app.route('/')
-def home():
+def home() -> str:
+    """Render the main index page."""
     return render_template('index.html')
 
 # Register package routes with unique endpoint names
-# In portal main.py
-for pkg in package_loaders:
-    def create_package_view(pkg_name):
-        def view():
-            return render_template(
-                f'{pkg_name}:index.html', 
-                standalone=False
-            )
-        return view
-        
+def create_package_view(pkg_name: str):
+    """Return a view function for a package's index page."""
+    def view():
+        return render_template(f'{pkg_name}:index.html', standalone=False)
+    return view
+
+for pkg in package_template_loaders:
     app.add_url_rule(
         f'/{pkg}',
         endpoint=f'{pkg}_home',
@@ -48,39 +57,58 @@ for pkg in package_loaders:
         strict_slashes=False
     )
 
-def run_service(service_path):
-    """Run a service module with proper error handling"""
-    sys.path.insert(0, service_path)
+def run_service(service_path: str) -> None:
+    """Run a service module with proper error handling."""
+    main_py = os.path.join(service_path, 'main.py')
+    module_name = f"service_{os.path.basename(service_path)}"
     try:
-        from main import run
-        run()
+        spec = importlib.util.spec_from_file_location(module_name, main_py)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, 'run'):
+                mod.run()
+            else:
+                print(f"No 'run' function in {main_py}")
+        else:
+            print(f"Could not load module from {main_py}")
     except Exception as e:
         print(f"Service {service_path} failed: {str(e)}")
+        import traceback
         traceback.print_exc()
 
-def shutdown(signum, frame):
-    """Graceful shutdown handler"""
+def shutdown(processes):
+    """Graceful shutdown handler."""
     for p in processes:
         p.terminate()
+        p.join()
     sys.exit(0)
 
-if __name__ == '__main__':
-    processes = []
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
+def start_service_processes(service_packages):
+    """Start all service package processes and return the process list."""
+    return [
+        multiprocessing.Process(
+            target=run_service,
+            args=(pkg_dir,),
+            name=f"Service-{pkg}"
+        )
+        for pkg, pkg_dir in service_packages
+    ]
 
-    # Start package services
-    for pkg in os.listdir(PACKAGE_DIR):
-        pkg_dir = os.path.join(PACKAGE_DIR, pkg)
-        if os.path.exists(os.path.join(pkg_dir, 'main.py')):
-            p = multiprocessing.Process(
-                target=run_service,
-                args=(pkg_dir,),
-                name=f"Service-{pkg}"
-            )
-            p.start()
-            processes.append(p)
+def register_signal_handlers(processes):
+    """Register signal handlers for graceful shutdown."""
+    def shutdown_handler(signum, frame):
+        shutdown(processes)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, shutdown_handler)
 
-    # Run portal in main process
+def main():
+    processes = start_service_processes(service_packages)
+    for p in processes:
+        p.start()
+    register_signal_handlers(processes)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
+if __name__ == '__main__':
+    main()
