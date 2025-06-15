@@ -24,18 +24,23 @@ for pkg in os.listdir(PACKAGE_DIR):
 # Create loader hierarchy
 app.jinja_loader = ChoiceLoader([
     FileSystemLoader(main_templates),  # Main templates
-    PrefixLoader(package_loaders)       # Package templates under /<pkg_name>/
+    PrefixLoader(package_loaders, delimiter=':')  # Package templates under package namespace
 ])
 
 @app.route('/')
 def home():
     return render_template('index.html')
 
-# Register package routes
+# Register package routes with unique endpoint names
 for pkg in package_loaders:
-    @app.route(f'/{pkg}')
-    def package_home(pkg_name=pkg):  # Capture package name in closure
-        return render_template(f'{pkg_name}/index.html')  # Namespaced template
+    def create_package_view(pkg_name):
+        def view():
+            return render_template(f'{pkg_name}:index.html')  # Use namespaced template
+        return view
+        
+    view_func = create_package_view(pkg)
+    endpoint_name = f'{pkg}_home'  # Unique endpoint per package
+    app.add_url_rule(f'/{pkg}', endpoint=endpoint_name, view_func=view_func)
 
 def run_service(service_path):
     """Run a service module with proper error handling"""
