@@ -7,4 +7,4 @@ def dashboard_home():
     return "Dashboard Service Running on Port 5000"
 
 if __name__ == '__main__':
-    app.run(port=5000)
+    app.run(port=5001)

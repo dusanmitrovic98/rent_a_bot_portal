@@ -10,8 +10,8 @@ load_dotenv()
 
 # Proxy configuration
 SERVICES = {
-    "dashboard": "http://localhost:5000",
-    "ask": "http://localhost:5001"
+    "dashboard": "http://localhost:5001",
+    "ask": "http://localhost:5002"
 }
 
 @app.route('/', defaults={'path': ''})
@@ -26,7 +26,7 @@ def catch_all(path):
         return proxy_request('ask', path)
     
     # Main website
-    return "Main Website on Port 3000"
+    return "Main Website on Port 5000"
 
 def proxy_request(service, path):
     service_url = f"{SERVICES[service]}/{path.replace(service + '/', '')}"
@@ -49,5 +49,5 @@ def proxy_request(service, path):
     return (resp.content, resp.status_code, headers)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 3000))
+    port = int(os.environ.get('PORT', 5000))
     app.run(host="0.0.0.0", port=port)
