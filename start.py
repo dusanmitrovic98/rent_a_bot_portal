@@ -1,18 +1,28 @@
 import multiprocessing
-from main_app import app
-from service_worker import start_worker
 import os
+import sys
+import subprocess
+import time
 
-def start_main():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+def start_ask():
+    subprocess.run([sys.executable, os.path.join('packages', 'ask', 'main.py')])
+
+def start_dashboard():
+    subprocess.run([sys.executable, os.path.join('packages', 'dashboard', 'main.py')])
+
+def start_portal():
+    subprocess.run([sys.executable, 'main.py'])
 
 if __name__ == "__main__":
-    p1 = multiprocessing.Process(target=start_worker)
-    p2 = multiprocessing.Process(target=start_main)
-    
-    p1.start()
-    p2.start()
-    
-    p1.join()
-    p2.join()
+    p_ask = multiprocessing.Process(target=start_ask)
+    p_dashboard = multiprocessing.Process(target=start_dashboard)
+    p_portal = multiprocessing.Process(target=start_portal)
+
+    p_ask.start()
+    p_dashboard.start()
+    time.sleep(1)  # Give services time to start
+    p_portal.start()
+
+    p_ask.join()
+    p_dashboard.join()
+    p_portal.join()
