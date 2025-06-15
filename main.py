@@ -2,6 +2,11 @@ from flask import Flask, request, render_template
 import requests
 import os
 from dotenv import load_dotenv
+import json
+import subprocess
+import sys
+import signal
+import atexit
 
 app = Flask(__name__)
 
@@ -9,12 +14,20 @@ app = Flask(__name__)
 load_dotenv()
 
 # Proxy configuration
-# Map service names to their actual ports
-SERVICE_PORTS = {
-    'dashboard': 5001,
-    'ask': 5002,
-}
-SERVICES = {name: f"http://localhost:{port}" for name, port in SERVICE_PORTS.items()}
+# Dynamically load service ports from each service's config.json
+SERVICE_PORTS = {}
+SERVICES = {}
+services_dir = os.path.join(os.path.dirname(__file__), 'packages')
+for service_name in os.listdir(services_dir):
+    service_path = os.path.join(services_dir, service_name)
+    config_path = os.path.join(service_path, 'config.json')
+    if os.path.isdir(service_path) and os.path.isfile(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            port = config.get('port')
+            if port:
+                SERVICE_PORTS[service_name] = port
+                SERVICES[service_name] = f"http://localhost:{port}"
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -54,5 +67,35 @@ def proxy_request(service, path):
     return (resp.content, resp.status_code, response_headers)
 
 if __name__ == '__main__':
+    # Start all services as subprocesses
+    service_processes = []
+    for service_name in SERVICES:
+        service_main_py = os.path.join(services_dir, service_name, 'main.py')
+        if os.path.isfile(service_main_py):
+            proc = subprocess.Popen([sys.executable, service_main_py])
+            service_processes.append(proc)
+
+    def cleanup_services(*args):
+        for proc in service_processes:
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        # Give them a moment to terminate, then force kill if needed
+        for proc in service_processes:
+            try:
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    # Register cleanup on exit and signals
+    atexit.register(cleanup_services)
+    signal.signal(signal.SIGINT, lambda sig, frame: (cleanup_services(), exit(0)))
+    signal.signal(signal.SIGTERM, lambda sig, frame: (cleanup_services(), exit(0)))
+
     port = int(os.environ.get('PORT', 5000))
     app.run(host="0.0.0.0", port=port)
