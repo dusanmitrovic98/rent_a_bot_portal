@@ -9,18 +9,18 @@ from packages.dashboard import app as dashboard_app
 load_dotenv()
 
 # Main portal app
-portal_app = Flask(__name__)
+app = Flask(__name__)
 
-@portal_app.route('/')
+@app.route('/')
 def index():
     return render_template('index.html')
 
 # Optionally, proxy /ask and /dashboard to the respective apps (for local dev)
-@portal_app.route('/ask')
+@app.route('/ask')
 def ask_proxy():
     return ask_app.view_functions['ask_home']()
 
-@portal_app.route('/dashboard')
+@app.route('/dashboard')
 def dashboard_proxy():
     return dashboard_app.view_functions['dashboard_home']()
 
@@ -37,4 +37,4 @@ if __name__ == '__main__':
     threading.Thread(target=run_dashboard, daemon=True).start()
     # Start the portal app on the main thread, using $PORT or 5000
     port = int(os.environ.get('PORT', 5000))
-    portal_app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port)
