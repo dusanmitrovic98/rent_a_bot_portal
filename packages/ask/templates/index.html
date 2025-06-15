@@ -1,4 +1,10 @@
-{% extends "index.html" %}
+<!-- packages/ask/templates/index.html -->
+{% if standalone %}
+    {% extends "base.html" %}
+{% else %}
+    {% extends "index.html" %}  <!-- Portal's base template -->
+{% endif %}
+
 {% block content %}
 <h1>Ask Service</h1>
 <p>This is the ask service page.</p>

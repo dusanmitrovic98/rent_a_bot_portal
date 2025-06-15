@@ -1,16 +1,27 @@
-from flask import Flask, render_template
+# packages/ask/main.py
 import json
 import os
+from flask import Flask, render_template
 
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
+# Load config once at module level
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
+try:
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    config = {}
 
-@app.route('/ask')
-def ask():
-    return render_template('index.html')
-
-with open(os.path.join(os.path.dirname(__file__), 'config.json')) as f:
-    config = json.load(f)
-port = config.get('port', 5002)
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
 def run():
+    app = Flask(__name__, template_folder=TEMPLATE_DIR)
+
+    @app.route('/')
+    def home():
+        return render_template('index.html', standalone=True)
+
+    port = config.get('port', 5002)
     app.run(host='127.0.0.1', port=port)
+
+if __name__ == '__main__':
+    run()
