@@ -1,11 +1,10 @@
+{% if standalone %}
 {% extends "base.html" %}
+{% else %}
+{% extends "index.html" %}
+{% endif %}
 
 {% block content %}
-{% if standalone %}
 <h1>Dashboard Service</h1>
 <p>This is the dashboard service page.</p>
-{% else %}
-<h1>Dashboard Service (Embedded)</h1>
-<p>This is the dashboard service page, embedded in the main site.</p>
-{% endif %}
 {% endblock %}
