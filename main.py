@@ -1,13 +1,18 @@
 import os
 import importlib.util
 import multiprocessing
-from flask import Flask, render_template, abort, Blueprint
+from flask import Flask, render_template, Blueprint
 
 app = Flask(__name__)
 
 PACKAGE_DIR = os.path.join(os.path.dirname(__file__), 'packages')
 
 # Dynamically register blueprints for each service in packages
+def make_service_index():
+    def service_index():
+        return render_template('index.html')
+    return service_index
+
 for service in os.listdir(PACKAGE_DIR):
     service_path = os.path.join(PACKAGE_DIR, service)
     service_template_dir = os.path.join(service_path, 'templates')
@@ -15,13 +20,11 @@ for service in os.listdir(PACKAGE_DIR):
     if os.path.isdir(service_path) and os.path.exists(service_index_html):
         bp = Blueprint(
             service,
-            __name__,
+            __name__ + '_' + service,  # unique name for each blueprint
             template_folder=service_template_dir,
             url_prefix=f'/{service}'
         )
-        @bp.route('/')
-        def service_index(service=service):
-            return render_template('index.html')
+        bp.route('/')(make_service_index())
         app.register_blueprint(bp)
 
 @app.route('/')
