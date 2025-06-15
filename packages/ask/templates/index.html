@@ -1,10 +1,11 @@
-{% if standalone %}
 {% extends "base.html" %}
-{% else %}
-{% extends "index.html" %}
-{% endif %}
 
 {% block content %}
+{% if standalone %}
 <h1>Ask Service</h1>
 <p>This is the ask service page.</p>
+{% else %}
+<h1>Ask Service (Embedded)</h1>
+<p>This is the ask service page, embedded in the main site.</p>
+{% endif %}
 {% endblock %}
