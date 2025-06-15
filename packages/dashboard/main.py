@@ -7,4 +7,4 @@ def dashboard_home():
     return render_template('dashboard.html')
 
 if __name__ == '__main__':
-    app.run(port=5001)
+    app.run(host="localhost", port=5001)

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import signal
 import atexit
+from functools import partial
 
 app = Flask(__name__)
 
@@ -59,7 +60,7 @@ def proxy_request(service, path):
         stream=True
     )
     # Exclude hop-by-hop headers
-    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+    excluded_headers = {'content-encoding', 'content-length', 'transfer-encoding', 'connection'}
     response_headers = [
         (name, value) for name, value in resp.headers.items()
         if name.lower() not in excluded_headers
@@ -68,34 +69,25 @@ def proxy_request(service, path):
 
 if __name__ == '__main__':
     # Start all services as subprocesses
-    service_processes = []
-    for service_name in SERVICES:
-        service_main_py = os.path.join(services_dir, service_name, 'main.py')
-        if os.path.isfile(service_main_py):
-            proc = subprocess.Popen([sys.executable, service_main_py])
-            service_processes.append(proc)
+    service_main_paths = [os.path.join(services_dir, name, 'main.py') for name in SERVICES]
+    service_processes = [subprocess.Popen([sys.executable, path]) for path in service_main_paths if os.path.isfile(path)]
 
-    def cleanup_services(*args):
+    def cleanup_services():
         for proc in service_processes:
             if proc.poll() is None:
                 try:
                     proc.terminate()
+                    proc.wait(timeout=3)
                 except Exception:
-                    pass
-        # Give them a moment to terminate, then force kill if needed
-        for proc in service_processes:
-            try:
-                proc.wait(timeout=3)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
 
     # Register cleanup on exit and signals
     atexit.register(cleanup_services)
-    signal.signal(signal.SIGINT, lambda sig, frame: (cleanup_services(), exit(0)))
-    signal.signal(signal.SIGTERM, lambda sig, frame: (cleanup_services(), exit(0)))
+    signal.signal(signal.SIGINT, partial(lambda cleanup, sig, frame: (cleanup(), exit(0)), cleanup_services))
+    signal.signal(signal.SIGTERM, partial(lambda cleanup, sig, frame: (cleanup(), exit(0)), cleanup_services))
 
     port = int(os.environ.get('PORT', 5000))
     app.run(host="0.0.0.0", port=port)
